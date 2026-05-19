@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Peloton – Death Spiral Risk Assessment</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --brand:    #1a1a2e;
+      --accent:   #e94560;
+      --warn:     #f5a623;
+      --safe:     #27ae60;
+      --light-bg: #f4f6f9;
+      --card-bg:  #ffffff;
+      --border:   #e0e4ea;
+      --text:     #2c3e50;
+      --muted:    #7f8c9a;
+      --red-bg:   #fdf0f0;
+      --yellow-bg:#fffbf0;
+      --green-bg: #f0fdf4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--light-bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--brand);
+      color: #fff;
+      padding: 22px 32px 18px;
+      display: flex;
+      align-items: flex-end;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    header .logo {
+      font-size: 1.55rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    header .logo span { color: var(--accent); }
+    header .subtitle {
+      font-size: 0.82rem;
+      color: #aab4c0;
+      margin-left: auto;
+      text-align: right;
+    }
+
+    /* ── Layout ── */
+    .page { max-width: 1200px; margin: 0 auto; padding: 28px 20px 60px; }
+
+    /* ── Section Title ── */
+    .section-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── Verdict Banner ── */
+    #verdict-banner {
+      border-radius: 10px;
+      padding: 20px 28px;
+      margin-bottom: 28px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      border-left: 6px solid;
+    }
+    #verdict-banner .icon { font-size: 2rem; }
+    #verdict-banner.danger  { background: var(--red-bg);    border-color: var(--accent); color: #c0392b; }
+    #verdict-banner.warning { background: var(--yellow-bg); border-color: var(--warn);   color: #b7770d; }
+    #verdict-banner.stable  { background: var(--green-bg);  border-color: var(--safe);   color: #1e8449; }
+    #verdict-banner p { font-size: 0.88rem; font-weight: 400; color: var(--text); margin-top: 4px; }
+
+    /* ── KPI Cards ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .kpi-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px 20px;
+    }
+    .kpi-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+    .kpi-card .value { font-size: 1.7rem; font-weight: 700; }
+    .kpi-card .change { font-size: 0.78rem; margin-top: 4px; }
+    .kpi-card .change.neg { color: var(--accent); }
+    .kpi-card .change.pos { color: var(--safe); }
+    .kpi-card .change.warn { color: var(--warn); }
+
+    /* ── Charts Row ── */
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 28px;
+    }
+    @media (max-width: 720px) { .charts-row { grid-template-columns: 1fr; } }
+    .chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .chart-card h3 { font-size: 0.88rem; font-weight: 600; margin-bottom: 14px; color: var(--text); }
+    .chart-card canvas { max-height: 220px; }
+
+    /* ── Death Spiral Calculator ── */
+    .calc-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px 28px;
+      margin-bottom: 28px;
+    }
+    .calc-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .calc-card .desc { font-size: 0.83rem; color: var(--muted); margin-bottom: 20px; }
+    .calc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+    .calc-field label { display: block; font-size: 0.78rem; color: var(--muted); margin-bottom: 5px; }
+    .calc-field input {
+      width: 100%; padding: 9px 12px;
+      border: 1px solid var(--border); border-radius: 7px;
+      font-size: 0.95rem; color: var(--text);
+      background: var(--light-bg);
+    }
+    .calc-field input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+    .calc-result {
+      margin-top: 22px;
+      background: var(--light-bg);
+      border-radius: 8px;
+      padding: 16px 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px;
+    }
+    .calc-result .res-item .res-label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; }
+    .calc-result .res-item .res-val { font-size: 1.3rem; font-weight: 700; margin-top: 2px; }
+    .calc-result .res-item .res-val.bad  { color: var(--accent); }
+    .calc-result .res-item .res-val.warn { color: var(--warn); }
+    .calc-result .res-item .res-val.good { color: var(--safe); }
+
+    /* ── Risk Scorecard ── */
+    .scorecard {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 24px 28px;
+      margin-bottom: 28px;
+    }
+    .scorecard h3 { font-size: 1rem; font-weight: 700; margin-bottom: 16px; }
+    .score-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .score-row:last-child { border-bottom: none; }
+    .score-row .factor { flex: 1; font-size: 0.88rem; }
+    .score-row .factor small { display: block; color: var(--muted); font-size: 0.76rem; margin-top: 2px; }
+    .score-row .pill {
+      font-size: 0.72rem; font-weight: 700; padding: 3px 10px;
+      border-radius: 20px; text-transform: uppercase; white-space: nowrap;
+    }
+    .pill.red    { background: #fde8e8; color: #c0392b; }
+    .pill.yellow { background: #fef3cd; color: #856404; }
+    .pill.green  { background: #d4edda; color: #155724; }
+    .score-row .bar-wrap { width: 120px; height: 8px; background: #e9ecef; border-radius: 4px; overflow: hidden; }
+    .score-row .bar-fill { height: 100%; border-radius: 4px; }
+
+    /* ── Footnote ── */
+    .footnote {
+      font-size: 0.74rem; color: var(--muted);
+      border-top: 1px solid var(--border);
+      padding-top: 14px; margin-top: 8px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">PELO<span>TON</span></div>
+    <div style="font-size:0.8rem;color:#aab4c0;margin-top:2px;">Death Spiral Risk Assessment · Prepared May 2026</div>
+  </div>
+  <div class="subtitle">
+    Source: Peloton 10-K FY2025 (Aug 2025) &amp; Public Filings<br>
+    Engagement Team – Kenan-Flagler Business School
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- Verdict Banner -->
+  <div id="verdict-banner" class="warning">
+    <div class="icon">⚠️</div>
+    <div>
+      <div id="verdict-text">ELEVATED DEATH SPIRAL RISK — DEMAND-DRIVEN</div>
+      <p id="verdict-detail">Connected Fitness subscribers have declined 10.0% from peak (Mar 2023). Fixed subscription costs remain largely fixed at ~$517M/yr while the subscriber base shrinks, driving fixed cost per subscriber up. Churn has risen from 1.3% → 1.6%. Immediate monitoring warranted.</p>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="section-title">Key Metrics at a Glance (Latest: FY2025 / Dec 2025)</div>
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="label">Paid Connected Fitness Subs</div>
+      <div class="value" style="color:#e94560;">2.66M</div>
+      <div class="change neg">▼ 10.0% from Mar 2023 peak (2.96M)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Paid App Subscribers</div>
+      <div class="value" style="color:#e94560;">522K</div>
+      <div class="change neg">▼ 46.7% from Jun 2022 peak (980K)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Avg Monthly Churn (Connected)</div>
+      <div class="value" style="color:#f5a623;">1.6%</div>
+      <div class="change warn">▲ Up from 1.3% in FY2023</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Subscription Revenue (FY25)</div>
+      <div class="value">$1.67B</div>
+      <div class="change neg">▼ 2.1% YoY</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Subscription Cost (FY25)</div>
+      <div class="value">$517M</div>
+      <div class="change warn">Largely fixed (instructors, studios)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Fixed Cost / Subscriber (Est.)</div>
+      <div class="value" style="color:#e94560;">$194</div>
+      <div class="change neg">▲ Up from ~$176 at peak subs</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>📉 Connected Fitness Subscribers (Quarterly, 2021–2025)</h3>
+      <canvas id="subChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>💰 Fixed Cost per Subscriber vs. Subscriber Count</h3>
+      <canvas id="costChart"></canvas>
+    </div>
+  </div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <h3>🔄 Average Monthly Churn Rate (Annual)</h3>
+      <canvas id="churnChart"></canvas>
+    </div>
+    <div class="chart-card">
+      <h3>📊 Subscription Revenue vs. Subscription Cost (FY2023–FY2025)</h3>
+      <canvas id="revCostChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Death Spiral Calculator -->
+  <div class="calc-card">
+    <h3>🔢 Death Spiral Sensitivity Calculator</h3>
+    <div class="desc">
+      Based on the death spiral model: <em>Unit Cost = Fixed Costs ÷ Subscribers + Variable Cost per Sub</em>.
+      Adjust the inputs below to model how subscriber loss affects per-unit cost and profitability.
+    </div>
+    <div class="calc-grid">
+      <div class="calc-field">
+        <label>Annual Fixed Subscription Costs ($M)</label>
+        <input type="number" id="inp-fixed" value="517" min="0" step="10" oninput="calcSpiral()">
+      </div>
+      <div class="calc-field">
+        <label>Variable Cost per Subscriber / Year ($)</label>
+        <input type="number" id="inp-var" value="44" min="0" step="1" oninput="calcSpiral()">
+      </div>
+      <div class="calc-field">
+        <label>Current Subscribers (Millions)</label>
+        <input type="number" id="inp-subs" value="2.66" min="0.1" step="0.1" oninput="calcSpiral()">
+      </div>
+      <div class="calc-field">
+        <label>Annual Subscription Revenue per Sub ($)</label>
+        <input type="number" id="inp-rev" value="529" min="0" step="10" oninput="calcSpiral()">
+      </div>
+    </div>
+    <div class="calc-result" id="calc-result">
+      <!-- filled by JS -->
+    </div>
+  </div>
+
+  <!-- Risk Scorecard -->
+  <div class="scorecard">
+    <h3>🎯 Death Spiral Risk Scorecard</h3>
+    <div class="score-row">
+      <div class="factor">
+        Subscriber Trend
+        <small>Connected Fitness subs peaked Mar 2023; down 10.0% to 2.66M (Dec 2025)</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:75%;background:#e94560;"></div></div>
+      <div class="pill red">High Risk</div>
+    </div>
+    <div class="score-row">
+      <div class="factor">
+        Churn Rate Trajectory
+        <small>Monthly churn rose 1.3% → 1.6% (FY2023 → FY2025); App churn at 7.0%</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:65%;background:#f5a623;"></div></div>
+      <div class="pill yellow">Elevated</div>
+    </div>
+    <div class="score-row">
+      <div class="factor">
+        Fixed Cost Leverage
+        <small>Subscription COGS ~$517M (FY25) vs $548M (FY23) — modest reduction despite 10% fewer subs</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:60%;background:#f5a623;"></div></div>
+      <div class="pill yellow">Elevated</div>
+    </div>
+    <div class="score-row">
+      <div class="factor">
+        Subscription Gross Margin
+        <small>Margin improved: 67.2% (FY23) → 69.1% (FY25) — positive signal</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:30%;background:#27ae60;"></div></div>
+      <div class="pill green">Improving</div>
+    </div>
+    <div class="score-row">
+      <div class="factor">
+        Hardware Revenue Decline
+        <small>Connected Fitness Products revenue: $1.13B (FY23) → $817M (FY25), down 27.7%</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:80%;background:#e94560;"></div></div>
+      <div class="pill red">High Risk</div>
+    </div>
+    <div class="score-row">
+      <div class="factor">
+        Pricing Power / ARPU
+        <small>Connected Fitness ARPU ~$44/mo stable; subscription price held at $44/mo</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:35%;background:#27ae60;"></div></div>
+      <div class="pill green">Stable</div>
+    </div>
+    <div class="score-row">
+      <div class="factor">
+        Restructuring / Cost Response
+        <small>3 restructuring plans (2022, 2024, 2025); OpEx down 25% YoY in FY25; $403M Adj. EBITDA</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:40%;background:#27ae60;"></div></div>
+      <div class="pill green">Mitigating</div>
+    </div>
+    <div class="score-row">
+      <div class="factor">
+        Liquidity / Runway
+        <small>$1.04B cash (Jun 2025); positive free cash flow $324M in FY25 — first time in years</small>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:25%;background:#27ae60;"></div></div>
+      <div class="pill green">Adequate</div>
+    </div>
+  </div>
+
+  <!-- Footnote -->
+  <div class="footnote">
+    <strong>Death Spiral Definition (UNC Kenan-Flagler):</strong> A death spiral occurs when declining volume forces fixed costs to be spread over fewer units, raising per-unit cost, which in turn drives further volume reduction in a self-reinforcing cycle. For Peloton, this is <em>demand-driven</em>: post-pandemic subscriber attrition reduces the base over which fixed content, studio, and instructor costs are allocated, raising the effective cost per subscriber and potentially pressuring pricing or quality decisions that accelerate further churn.<br><br>
+    <strong>Data Sources:</strong> Peloton 10-K FY2025 (filed Aug 7, 2025); Peloton quarterly shareholder letters; Backlinko Peloton Statistics (Mar 2026). All figures in USD. Subscriber data as of December 2025 unless otherwise noted. This widget is for internal analytical purposes only.
+  </div>
+
+</div>
+
+<script>
+// ── Chart Data ──────────────────────────────────────────────────────────────
+
+// Quarterly connected fitness subs (millions) — selected quarters
+const subLabels = [
+  'Q3 FY21','Q4 FY21','Q1 FY22','Q2 FY22','Q3 FY22','Q4 FY22',
+  'Q1 FY23','Q2 FY23','Q3 FY23','Q4 FY23',
+  'Q1 FY24','Q2 FY24','Q3 FY24','Q4 FY24',
+  'Q1 FY25','Q2 FY25','Q3 FY25','Q4 FY25'
+];
+const subData = [
+  2.33, 2.49, 2.78, 2.96, 2.96, 2.97,
+  3.03, 3.11, 3.08, 2.96,
+  3.00, 3.06, 2.98, 2.90,
+  2.88, 2.88, 2.80, 2.66
+];
+
+// Annual fixed cost per subscriber estimate (subscription COGS / avg subs)
+// FY23: $548M / ~3.0M = $183; FY24: $551M / ~2.97M = $185; FY25: $517M / ~2.84M = $182
+// But peak subs (Mar 2023 = 3.11M) → $548M/3.11M = $176
+const costLabels = ['FY2023','FY2024','FY2025'];
+const subCountForCost = [3.0, 2.97, 2.84]; // avg subs (millions)
+const fixedCostData   = [548, 551, 517];    // subscription COGS ($M)
+const costPerSub      = fixedCostData.map((c, i) => +(c / subCountForCost[i] * 1).toFixed(1)); // $/sub/yr
+
+// Churn data (annual average monthly %)
+const churnLabels = ['FY2023','FY2024','FY2025'];
+const churnData   = [1.3, 1.4, 1.6];
+
+// Revenue vs Cost ($M)
+const revCostLabels = ['FY2023','FY2024','FY2025'];
+const revData  = [1670, 1709, 1674];
+const costData = [548, 551, 517];
+
+// ── Chart Helpers ────────────────────────────────────────────────────────────
+const ACCENT = '#e94560';
+const BLUE   = '#3498db';
+const SAFE   = '#27ae60';
+const WARN   = '#f5a623';
+const BRAND  = '#1a1a2e';
+
+function makeChart(id, config) {
+  const ctx = document.getElementById(id).getContext('2d');
+  return new Chart(ctx, config);
+}
+
+// 1. Subscriber trend
+makeChart('subChart', {
+  type: 'line',
+  data: {
+    labels: subLabels,
+    datasets: [{
+      label: 'Paid Connected Fitness Subs (M)',
+      data: subData,
+      borderColor: ACCENT,
+      backgroundColor: 'rgba(233,69,96,0.08)',
+      fill: true,
+      tension: 0.3,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y.toFixed(2)}M subs` } }
+    },
+    scales: {
+      y: { min: 2.0, ticks: { callback: v => v + 'M' }, grid: { color: '#f0f0f0' } },
+      x: { ticks: { maxRotation: 45, font: { size: 10 } } }
+    }
+  }
+});
+
+// 2. Fixed cost per subscriber
+makeChart('costChart', {
+  type: 'bar',
+  data: {
+    labels: costLabels,
+    datasets: [
+      {
+        label: 'Fixed Cost / Sub / Year ($)',
+        data: costPerSub,
+        backgroundColor: [SAFE, WARN, ACCENT],
+        borderRadius: 5,
+        yAxisID: 'y',
+      },
+      {
+        label: 'Avg Subs (M)',
+        data: subCountForCost,
+        type: 'line',
+        borderColor: BLUE,
+        backgroundColor: 'transparent',
+        tension: 0.3,
+        pointRadius: 5,
+        yAxisID: 'y2',
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 10 } } },
+      tooltip: { mode: 'index' }
+    },
+    scales: {
+      y:  { position: 'left',  ticks: { callback: v => '$' + v }, title: { display: true, text: '$/Sub/Yr', font: { size: 10 } } },
+      y2: { position: 'right', ticks: { callback: v => v + 'M' }, title: { display: true, text: 'Avg Subs', font: { size: 10 } }, grid: { drawOnChartArea: false } }
+    }
+  }
+});
+
+// 3. Churn
+makeChart('churnChart', {
+  type: 'bar',
+  data: {
+    labels: churnLabels,
+    datasets: [{
+      label: 'Avg Monthly Churn (%)',
+      data: churnData,
+      backgroundColor: [SAFE, WARN, ACCENT],
+      borderRadius: 5,
+    }]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y}% monthly churn` } }
+    },
+    scales: {
+      y: { min: 0, max: 2.5, ticks: { callback: v => v + '%' }, grid: { color: '#f0f0f0' } }
+    }
+  }
+});
+
+// 4. Revenue vs Cost
+makeChart('revCostChart', {
+  type: 'bar',
+  data: {
+    labels: revCostLabels,
+    datasets: [
+      {
+        label: 'Subscription Revenue ($M)',
+        data: revData,
+        backgroundColor: 'rgba(52,152,219,0.75)',
+        borderRadius: 5,
+      },
+      {
+        label: 'Subscription COGS ($M)',
+        data: costData,
+        backgroundColor: 'rgba(233,69,96,0.65)',
+        borderRadius: 5,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 10 } } },
+      tooltip: { mode: 'index', callbacks: { label: ctx => ` $${ctx.parsed.y.toLocaleString()}M` } }
+    },
+    scales: {
+      y: { ticks: { callback: v => '$' + v + 'M' }, grid: { color: '#f0f0f0' } }
+    }
+  }
+});
+
+// ── Death Spiral Calculator ──────────────────────────────────────────────────
+function calcSpiral() {
+  const fixed = parseFloat(document.getElementById('inp-fixed').value) || 0;
+  const varCost = parseFloat(document.getElementById('inp-var').value) || 0;
+  const subs = parseFloat(document.getElementById('inp-subs').value) || 0.001;
+  const revPerSub = parseFloat(document.getElementById('inp-rev').value) || 0;
+
+  const fixedPerSub = (fixed * 1e6) / (subs * 1e6);
+  const totalCostPerSub = fixedPerSub + varCost;
+  const profitPerSub = revPerSub - totalCostPerSub;
+  const grossMargin = revPerSub > 0 ? ((revPerSub - totalCostPerSub) / revPerSub * 100) : 0;
+
+  const profClass = profitPerSub < 0 ? 'bad' : profitPerSub < 50 ? 'warn' : 'good';
+  const marginClass = grossMargin < 0 ? 'bad' : grossMargin < 40 ? 'warn' : 'good';
+
+  // Spiral scenario: what if subs drop 20%?
+  const newSubs = subs * 0.8;
+  const newFixedPerSub = (fixed * 1e6) / (newSubs * 1e6);
+  const newTotalCost = newFixedPerSub + varCost;
+  const newProfit = revPerSub - newTotalCost;
+  const spiralClass = newProfit < 0 ? 'bad' : newProfit < 50 ? 'warn' : 'good';
+
+  document.getElementById('calc-result').innerHTML = `
+    <div class="res-item">
+      <div class="res-label">Fixed Cost / Sub / Year</div>
+      <div class="res-val warn">$${fixedPerSub.toFixed(0)}</div>
+    </div>
+    <div class="res-item">
+      <div class="res-label">Total Cost / Sub / Year</div>
+      <div class="res-val warn">$${totalCostPerSub.toFixed(0)}</div>
+    </div>
+    <div class="res-item">
+      <div class="res-label">Profit / Sub / Year</div>
+      <div class="res-val ${profClass}">$${profitPerSub.toFixed(0)}</div>
+    </div>
+    <div class="res-item">
+      <div class="res-label">Gross Margin</div>
+      <div class="res-val ${marginClass}">${grossMargin.toFixed(1)}%</div>
+    </div>
+    <div class="res-item">
+      <div class="res-label">If Subs Drop 20% → Fixed Cost/Sub</div>
+      <div class="res-val ${spiralClass}">$${newFixedPerSub.toFixed(0)} (Profit/Sub: $${newProfit.toFixed(0)})</div>
+    </div>
+  `;
+}
+calcSpiral();
+</script>
+</body>
+</html>
